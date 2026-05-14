@@ -16,6 +16,9 @@ MONO_NAME = os.getenv("MONO_NAME", "Іван І.")
 PRIVAT_CARD = os.getenv("PRIVAT_CARD", "5168 7421 0000 1234")
 PRIVAT_NAME = os.getenv("PRIVAT_NAME", "Іван І.")
 
+DOWNLOAD_URL = os.getenv("DOWNLOAD_URL", "https://drive.google.com/file/d/1pSFm45Gn0ZR9antJRiEDlOD1ffiLGTyw/view?usp=sharing")
+INSTALL_FILE_ID = os.getenv("INSTALL_FILE_ID", "AgADqpIAAtRqKUg")
+
 # CryptoBot API
 CRYPTO_API_URL = "https://pay.crypt.bot/api"
 
