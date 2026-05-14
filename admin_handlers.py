@@ -6,8 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
 
-import os
-from config import ADMIN_IDS, SUPPORT_USERNAME, DOWNLOAD_URL, INSTALL_FILE_PATH
+from config import ADMIN_IDS, SUPPORT_USERNAME, DOWNLOAD_URL, INSTALL_FILE_ID
 from database import (
     get_setting, set_setting, get_stats, add_keys,
     get_available_keys_count, get_all_available_keys,
@@ -27,7 +26,7 @@ admin_router = Router()
 
 async def _send_download_info(bot, user_id: int):
     """Отправляет пользователю ссылку на установку и/или файл установщика."""
-    if not DOWNLOAD_URL and not INSTALL_FILE_PATH:
+    if not DOWNLOAD_URL and not INSTALL_FILE_ID:
         return  # Ничего не настроено — молча выходим
 
     # Сначала отправляем ссылку, если она задана
@@ -41,16 +40,14 @@ async def _send_download_info(bot, user_id: int):
             disable_web_page_preview=False
         )
 
-    # Затем отправляем файл, если он существует на сервере
-    if INSTALL_FILE_PATH and os.path.isfile(INSTALL_FILE_PATH):
-        from aiogram.types import FSInputFile
-        file = FSInputFile(INSTALL_FILE_PATH)
+    # Отправляем файл по file_id (хранится на серверах Telegram)
+    if INSTALL_FILE_ID:
         await bot.send_document(
             user_id,
-            document=file,
+            document=INSTALL_FILE_ID,
             caption=(
-                f'📦 <b>Файл установщика</b>\n\n'
-                f'Скачайте и запустите файл, затем введите ваш ключ.'
+                '📦 <b>Файл установщика</b>\n\n'
+                'Скачайте и запустите файл, затем введите ваш ключ.'
             ),
             parse_mode=ParseMode.HTML
         )
