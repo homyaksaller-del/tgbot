@@ -12,7 +12,8 @@ from database import (
     get_available_keys_count, get_all_available_keys,
     get_issued_keys_stats, get_available_key, mark_key_issued, save_purchase,
     get_bank_request, resolve_bank_request, get_bank_requests, get_orders_stats,
-    get_pending_bank_requests_with_buttons
+    get_pending_bank_requests_with_buttons, delete_key,
+    get_available_keys_page, get_available_keys_count_total
 )
 from keyboards import (
     admin_panel_keyboard, admin_prices_keyboard, admin_back_keyboard,
@@ -521,24 +522,97 @@ async def save_keys(message: Message, state: FSMContext):
     )
 
 
+PAGE_SIZE = 10
+
+
+def _keys_keyboard(keys: list, page: int, total: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key in keys:
+        short = key["license_key"][:28] + "…" if len(key["license_key"]) > 28 else key["license_key"]
+        rows.append([
+            InlineKeyboardButton(
+                text=f"🔑 {short} [{key['plan_key']}]",
+                callback_data=f"key_info_{key['id']}"
+            ),
+            InlineKeyboardButton(
+                text="🗑",
+                callback_data=f"key_delete_{key['id']}_{page}"
+            ),
+        ])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"keys_page_{page - 1}"))
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+    if (page + 1) * PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="▶️ Далее", callback_data=f"keys_page_{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_keys")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_keys_page(message_or_callback, page: int, edit: bool = True):
+    total = await get_available_keys_count_total()
+    keys = await get_available_keys_page(offset=page * PAGE_SIZE, limit=PAGE_SIZE)
+    if not keys and page == 0:
+        text = '<b>🔑 Список ключей</b>\n\n❌ Доступных ключей нет'
+        kb = admin_back_keyboard()
+    else:
+        total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+        text = f'<b>🔑 Доступные ключи</b>  •  Всего: <b>{total}</b>  •  Стр. {page + 1}/{total_pages}\n\n'
+        for key in keys:
+            text += f'<code>{key["license_key"]}</code> <b>[{key["plan_key"]}]</b>\n'
+        kb = _keys_keyboard(keys, page, total)
+
+    if edit:
+        await message_or_callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        await message_or_callback.answer()
+    else:
+        await message_or_callback.answer(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+
 @admin_router.callback_query(F.data == "list_keys")
 async def list_keys_handler(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Нет доступа", show_alert=True)
         return
-    keys = await get_all_available_keys(limit=20)
-    if not keys:
-        await callback.message.edit_text(
-            '<b>🔑 Список ключей</b>\n\n❌ Доступных ключей нет',
-            parse_mode=ParseMode.HTML, reply_markup=admin_back_keyboard()
-        )
-        await callback.answer()
+    await _show_keys_page(callback, page=0)
+
+
+@admin_router.callback_query(F.data.startswith("keys_page_"))
+async def keys_page_handler(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
         return
-    text = '<b>🔑 Доступные ключи (первые 20):</b>\n\n'
-    for i, key in enumerate(keys, 1):
-        text += f'{i}. <code>{key["license_key"]}</code> <b>[{key["plan_key"]}]</b>\n'
-    await callback.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=admin_back_keyboard())
+    page = int(callback.data.split("_")[2])
+    await _show_keys_page(callback, page=page)
+
+
+@admin_router.callback_query(F.data == "noop")
+async def noop_handler(callback: CallbackQuery):
     await callback.answer()
+
+
+@admin_router.callback_query(F.data.startswith("key_delete_"))
+async def key_delete_handler(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Нет доступа", show_alert=True)
+        return
+    parts = callback.data.split("_")
+    key_id = int(parts[2])
+    page = int(parts[3])
+    deleted = await delete_key(key_id)
+    if deleted:
+        await callback.answer("🗑 Ключ удалён")
+    else:
+        await callback.answer("⚠️ Ключ не найден или уже выдан", show_alert=True)
+    # Пересчитываем страницу — если текущая стала пустой, идём на предыдущую
+    total = await get_available_keys_count_total()
+    if page > 0 and page * PAGE_SIZE >= total:
+        page -= 1
+    await _show_keys_page(callback, page=page)
 
 
 # ─── APPROVE / REJECT BANK REQUEST ───────────────────────────────
