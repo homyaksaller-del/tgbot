@@ -377,3 +377,34 @@ async def get_pending_bank_requests_with_buttons(limit: int = 20) -> list:
             rows = await cursor.fetchall()
             cols = [d[0] for d in cursor.description]
             return [dict(zip(cols, r)) for r in rows]
+
+
+async def delete_key(key_id: int) -> bool:
+    """Удаляет доступный ключ по id. Возвращает True если удалён."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM available_keys WHERE id = ? AND status = 'available'",
+            (key_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def get_available_keys_count_total() -> int:
+    """Общее количество доступных ключей."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM available_keys WHERE status = 'available'"
+        ) as cursor:
+            return (await cursor.fetchone())[0]
+
+
+async def get_available_keys_page(offset: int = 0, limit: int = 10):
+    """Возвращает страницу доступных ключей с пагинацией."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id, license_key, plan_key FROM available_keys WHERE status = 'available' ORDER BY id ASC LIMIT ? OFFSET ?",
+            (limit, offset)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [{"id": r[0], "license_key": r[1], "plan_key": r[2]} for r in rows]
