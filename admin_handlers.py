@@ -6,7 +6,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums import ParseMode
 
-from config import ADMIN_IDS, SUPPORT_USERNAME
+import os
+from config import ADMIN_IDS, SUPPORT_USERNAME, DOWNLOAD_URL, INSTALL_FILE_PATH
 from database import (
     get_setting, set_setting, get_stats, add_keys,
     get_available_keys_count, get_all_available_keys,
@@ -22,6 +23,37 @@ from keyboards import (
 
 logger = logging.getLogger(__name__)
 admin_router = Router()
+
+
+async def _send_download_info(bot, user_id: int):
+    """Отправляет пользователю ссылку на установку и/или файл установщика."""
+    if not DOWNLOAD_URL and not INSTALL_FILE_PATH:
+        return  # Ничего не настроено — молча выходим
+
+    # Сначала отправляем ссылку, если она задана
+    if DOWNLOAD_URL:
+        await bot.send_message(
+            user_id,
+            f'<tg-emoji emoji-id="5372981976804366741">⬇️</tg-emoji> <b>Ссылка для скачивания программы:</b>\n\n'
+            f'<a href="{DOWNLOAD_URL}">Скачать установщик</a>\n\n'
+            f'<tg-emoji emoji-id="6028435952299413210">ℹ️</tg-emoji> Установите программу и введите ваш ключ при запуске.',
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=False
+        )
+
+    # Затем отправляем файл, если он существует на сервере
+    if INSTALL_FILE_PATH and os.path.isfile(INSTALL_FILE_PATH):
+        from aiogram.types import FSInputFile
+        file = FSInputFile(INSTALL_FILE_PATH)
+        await bot.send_document(
+            user_id,
+            document=file,
+            caption=(
+                f'📦 <b>Файл установщика</b>\n\n'
+                f'Скачайте и запустите файл, затем введите ваш ключ.'
+            ),
+            parse_mode=ParseMode.HTML
+        )
 
 
 class AdminStates(StatesGroup):
@@ -144,6 +176,7 @@ async def givekey_cmd(message: Message):
             parse_mode=ParseMode.HTML,
             reply_markup=back_main_keyboard()
         )
+        await _send_download_info(message.bot, user_id)
         await message.answer(
             f'✅ Ключ успешно выдан пользователю <code>{user_id}</code>\n'
             f'Тариф: <b>{plan["name"]}</b>\n'
@@ -567,6 +600,7 @@ async def req_approve(callback: CallbackQuery):
             parse_mode=ParseMode.HTML,
             reply_markup=back_main_keyboard()
         )
+        await _send_download_info(callback.bot, user_id)
     except Exception as e:
         logger.error(f"Cannot send key to user {user_id}: {e}")
 
